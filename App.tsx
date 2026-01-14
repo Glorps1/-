@@ -7,12 +7,12 @@ import AudioPlayer from './components/AudioPlayer';
 import QuizInterface from './components/QuizInterface';
 import { QUESTIONS } from './constants';
 import { Category, ExplanationState } from './types';
-import { generateExplanation, createChatSession } from './services/geminiService';
+import { generateExplanation, createChatSession, saveApiKey, getStoredApiKey } from './services/geminiService';
 import { Chat } from "@google/genai";
 import { 
     Sparkles, ArrowRight, BookOpenCheck, BrainCircuit, AlertCircle, 
     RotateCw, MessageSquare, Youtube, CheckCircle2, Bookmark, Menu, 
-    Maximize, Minimize, ChevronDown, ChevronUp, KeyRound, GraduationCap
+    Maximize, Minimize, ChevronDown, ChevronUp, KeyRound, GraduationCap, X
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -22,6 +22,10 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'explanation' | 'chat' | 'video' | 'quiz'>('explanation');
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Settings Modal State
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
   
   // Persistent State
   const [completedIds, setCompletedIds] = useState<number[]>(() => {
@@ -35,6 +39,20 @@ const App: React.FC = () => {
 
   useEffect(() => { localStorage.setItem('completed', JSON.stringify(completedIds)); }, [completedIds]);
   useEffect(() => { localStorage.setItem('bookmarked', JSON.stringify(bookmarkedIds)); }, [bookmarkedIds]);
+
+  // Init API Key input
+  useEffect(() => {
+    setApiKeyInput(getStoredApiKey());
+  }, []);
+
+  const handleSaveKey = () => {
+    saveApiKey(apiKeyInput.trim());
+    setShowSettings(false);
+    // If we have a selected question but error state, retry
+    if (selectedId && explanation.error) {
+        fetchExplanation(selectedId, true);
+    }
+  };
 
   const toggleComplete = (id: number) => {
     setCompletedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -67,6 +85,9 @@ const App: React.FC = () => {
         setExplanation({ loading: false, content: result, error: null });
     } catch (err: any) {
         setExplanation({ loading: false, content: null, error: err.message });
+        if (err.message.includes('403') || err.message.includes('Key')) {
+            setShowSettings(true);
+        }
     }
   };
 
@@ -118,7 +139,48 @@ const App: React.FC = () => {
   }, [selectedId]);
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans">
+    <div className="flex h-screen overflow-hidden font-sans relative">
+      
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                        <KeyRound className="w-5 h-5 text-indigo-600" /> Настройка API
+                    </h3>
+                    <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                        Чтобы приложение работало на этом устройстве, введите ваш Gemini API Key. Он сохранится только в вашем браузере.
+                    </p>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Google Gemini API Key</label>
+                    <input 
+                        type="password" 
+                        value={apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-slate-800 font-mono text-sm mb-4"
+                    />
+                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 mb-6">
+                        <p className="text-xs text-amber-700">
+                            Получить ключ бесплатно: <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline font-bold">Google AI Studio</a>
+                        </p>
+                    </div>
+                    <button 
+                        onClick={handleSaveKey}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-md shadow-indigo-200"
+                    >
+                        Сохранить и продолжить
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Sidebar Overlay for Mobile */}
       {showSidebar && window.innerWidth < 768 && (
         <div className="fixed inset-0 bg-slate-900/50 z-20" onClick={() => setShowSidebar(false)} />
@@ -154,7 +216,10 @@ const App: React.FC = () => {
            ) : (
                <div className="font-bold text-slate-800">Physics AI</div>
            )}
-           <div className="flex items-center gap-2">
+           <div className="flex items-center gap-1">
+                <button onClick={() => setShowSettings(true)} className="p-2 text-slate-500 hover:text-indigo-600">
+                    <KeyRound className="w-5 h-5" />
+                </button>
                 {selectedId && (
                     <button onClick={toggleFullscreen} className="p-2 text-slate-500 hover:text-indigo-600">
                         {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
@@ -202,13 +267,22 @@ const App: React.FC = () => {
 
                         {/* Actions Toolbar */}
                         <div className="flex gap-2 shrink-0 flex-col md:flex-row">
-                             <button 
-                                onClick={toggleFullscreen}
-                                className="hidden md:flex h-10 w-10 items-center justify-center rounded-xl border bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-indigo-600 transition-all"
-                                title={isFullscreen ? "Выйти из полноэкранного" : "На весь экран"}
-                            >
-                                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                            </button>
+                             <div className="hidden md:flex gap-2">
+                                <button 
+                                    onClick={() => setShowSettings(true)}
+                                    className="h-10 w-10 flex items-center justify-center rounded-xl border bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-indigo-600 transition-all"
+                                    title="Настройки API"
+                                >
+                                    <KeyRound className="w-5 h-5" />
+                                </button>
+                                <button 
+                                    onClick={toggleFullscreen}
+                                    className="h-10 w-10 flex items-center justify-center rounded-xl border bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-indigo-600 transition-all"
+                                    title={isFullscreen ? "Выйти из полноэкранного" : "На весь экран"}
+                                >
+                                    {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                                </button>
+                             </div>
 
                             <button 
                                 onClick={() => toggleBookmark(selectedQuestion.id)}
@@ -295,24 +369,14 @@ const App: React.FC = () => {
                                         <h3 className="font-semibold mb-1">Ошибка генерации</h3>
                                         <p className="text-sm mb-4 max-w-md">{explanation.error}</p>
                                         
-                                        {(explanation.error.includes("API Key") || explanation.error.includes("403")) && (
-                                            <div className="mb-4 bg-white p-4 rounded-lg border border-red-200 text-left text-xs text-slate-600 w-full max-w-md">
-                                                <div className="flex items-center gap-2 font-bold text-slate-800 mb-2">
-                                                    <KeyRound className="w-4 h-4" /> Как исправить:
-                                                </div>
-                                                <p className="mb-2">Сайт не видит ваш Gemini API ключ. Если вы используете Vercel:</p>
-                                                <ol className="list-decimal pl-4 space-y-1">
-                                                    <li>Зайдите в настройки проекта на Vercel.</li>
-                                                    <li>Откройте вкладку <b>Environment Variables</b>.</li>
-                                                    <li>Добавьте ключ: <b>API_KEY</b> = <code>ваш_ключ</code>.</li>
-                                                    <li>Сделайте <b>Redeploy</b> (пересоберите проект).</li>
-                                                </ol>
-                                            </div>
-                                        )}
-
-                                        <button onClick={() => fetchExplanation(selectedQuestion.id, true)} className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg shadow-sm text-sm font-medium hover:bg-red-50 transition-colors">
-                                            Попробовать снова
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setShowSettings(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-sm text-sm font-medium hover:bg-indigo-700 transition-colors">
+                                                Ввести API Ключ
+                                            </button>
+                                            <button onClick={() => fetchExplanation(selectedQuestion.id, true)} className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg shadow-sm text-sm font-medium hover:bg-red-50 transition-colors">
+                                                Попробовать снова
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <>
@@ -364,6 +428,12 @@ const App: React.FC = () => {
                 <p className="text-lg text-slate-500 mb-12 max-w-lg mx-auto leading-relaxed">
                     Выбери билет из списка слева, чтобы получить мгновенный разбор, видео-уроки и помощь виртуального репетитора.
                 </p>
+
+                <div className="flex justify-center mb-12">
+                     <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-full font-semibold shadow-sm hover:border-indigo-300 hover:text-indigo-600 transition-all">
+                        <KeyRound className="w-4 h-4" /> Настроить API Ключ
+                     </button>
+                </div>
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
