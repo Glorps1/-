@@ -4,20 +4,24 @@ import MarkdownViewer from './components/MarkdownViewer';
 import ChatInterface from './components/ChatInterface';
 import VideoResources from './components/VideoResources';
 import AudioPlayer from './components/AudioPlayer';
+import QuizInterface from './components/QuizInterface';
 import { QUESTIONS } from './constants';
 import { Category, ExplanationState } from './types';
 import { generateExplanation, createChatSession } from './services/geminiService';
 import { Chat } from "@google/genai";
 import { 
     Sparkles, ArrowRight, BookOpenCheck, BrainCircuit, AlertCircle, 
-    RotateCw, MessageSquare, Youtube, CheckCircle2, Bookmark, Menu, BookOpen
+    RotateCw, MessageSquare, Youtube, CheckCircle2, Bookmark, Menu, 
+    Maximize, Minimize, ChevronDown, ChevronUp, KeyRound, GraduationCap
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
-  const [activeTab, setActiveTab] = useState<'explanation' | 'chat' | 'video'>('explanation');
+  const [activeTab, setActiveTab] = useState<'explanation' | 'chat' | 'video' | 'quiz'>('explanation');
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Persistent State
   const [completedIds, setCompletedIds] = useState<number[]>(() => {
@@ -69,10 +73,38 @@ const App: React.FC = () => {
   const handleSelectQuestion = (id: number) => {
     setSelectedId(id);
     setActiveTab('explanation');
+    setIsHeaderExpanded(false); // Reset expansion on new question
     fetchExplanation(id);
-    const q = QUESTIONS.find(x => x.id === id);
-    if (q) setChatSession(createChatSession(q));
+    try {
+        const q = QUESTIONS.find(x => x.id === id);
+        if (q) setChatSession(createChatSession(q));
+    } catch(e) {
+        console.error("Chat init failed (likely no key)");
+    }
   };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch((e) => {
+            console.log(e);
+        });
+        setIsFullscreen(true);
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+            setIsFullscreen(false);
+        }
+    }
+  };
+
+  // Update fullscreen state listener
+  useEffect(() => {
+    const handleFsChange = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
 
   const [showSidebar, setShowSidebar] = useState(true);
   useEffect(() => {
@@ -122,29 +154,62 @@ const App: React.FC = () => {
            ) : (
                <div className="font-bold text-slate-800">Physics AI</div>
            )}
-           <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 -mr-2 text-slate-600">
-               <Menu className="w-6 h-6" />
-           </button>
+           <div className="flex items-center gap-2">
+                {selectedId && (
+                    <button onClick={toggleFullscreen} className="p-2 text-slate-500 hover:text-indigo-600">
+                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                    </button>
+                )}
+                <button onClick={() => setShowSidebar(!showSidebar)} className="p-2 -mr-2 text-slate-600">
+                    <Menu className="w-6 h-6" />
+                </button>
+           </div>
         </div>
 
         {selectedQuestion ? (
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
              {/* Header */}
-             <div className="bg-white border-b border-slate-200 px-6 py-5 z-10">
+             <div className="bg-white border-b border-slate-200 px-6 py-5 z-10 shrink-0">
                 <div className="max-w-4xl mx-auto w-full">
                     <div className="flex items-start justify-between gap-6 mb-6">
-                        <div>
+                        <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full tracking-wide uppercase">
                                     Билет #{selectedQuestion.id}
                                 </span>
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
                                     {selectedQuestion.category}
                                 </span>
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 leading-snug">{selectedQuestion.text}</h2>
+                            
+                            {/* Collapsible Question Title */}
+                            <div 
+                                onClick={() => setIsHeaderExpanded(!isHeaderExpanded)}
+                                className="group cursor-pointer select-none"
+                            >
+                                <h2 className={`text-xl md:text-2xl font-bold text-slate-900 leading-snug transition-all ${isHeaderExpanded ? '' : 'line-clamp-2'}`}>
+                                    {selectedQuestion.text}
+                                </h2>
+                                <button className="mt-1.5 flex items-center text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors">
+                                    {isHeaderExpanded ? (
+                                        <>Свернуть вопрос <ChevronUp className="w-3 h-3 ml-1" /></>
+                                    ) : (
+                                        <>Показать полностью <ChevronDown className="w-3 h-3 ml-1" /></>
+                                    )}
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex gap-2 shrink-0">
+
+                        {/* Actions Toolbar */}
+                        <div className="flex gap-2 shrink-0 flex-col md:flex-row">
+                             <button 
+                                onClick={toggleFullscreen}
+                                className="hidden md:flex h-10 w-10 items-center justify-center rounded-xl border bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-indigo-600 transition-all"
+                                title={isFullscreen ? "Выйти из полноэкранного" : "На весь экран"}
+                            >
+                                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                            </button>
+
                             <button 
                                 onClick={() => toggleBookmark(selectedQuestion.id)}
                                 className={`h-10 w-10 flex items-center justify-center rounded-xl border transition-all ${
@@ -171,9 +236,10 @@ const App: React.FC = () => {
                     </div>
                     
                     {/* Modern Segmented Control Tabs */}
-                    <div className="flex p-1 bg-slate-100 rounded-xl self-start inline-flex max-w-full overflow-x-auto">
+                    <div className="flex p-1 bg-slate-100 rounded-xl self-start inline-flex max-w-full overflow-x-auto no-scrollbar">
                         {[
                             { id: 'explanation', icon: Sparkles, label: 'Объяснение' },
+                            { id: 'quiz', icon: GraduationCap, label: 'Тест' },
                             { id: 'chat', icon: MessageSquare, label: 'AI Тьютор' },
                             { id: 'video', icon: Youtube, label: 'Видео' },
                         ].map((tab) => (
@@ -200,7 +266,7 @@ const App: React.FC = () => {
              <div className="flex-1 overflow-y-auto">
                 <div className="max-w-4xl mx-auto w-full p-4 md:p-8">
                     {activeTab === 'explanation' && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
                              
                              <AudioPlayer question={selectedQuestion} />
 
@@ -227,7 +293,23 @@ const App: React.FC = () => {
                                             <AlertCircle className="w-6 h-6" />
                                         </div>
                                         <h3 className="font-semibold mb-1">Ошибка генерации</h3>
-                                        <p className="text-sm mb-4">{explanation.error}</p>
+                                        <p className="text-sm mb-4 max-w-md">{explanation.error}</p>
+                                        
+                                        {(explanation.error.includes("API Key") || explanation.error.includes("403")) && (
+                                            <div className="mb-4 bg-white p-4 rounded-lg border border-red-200 text-left text-xs text-slate-600 w-full max-w-md">
+                                                <div className="flex items-center gap-2 font-bold text-slate-800 mb-2">
+                                                    <KeyRound className="w-4 h-4" /> Как исправить:
+                                                </div>
+                                                <p className="mb-2">Сайт не видит ваш Gemini API ключ. Если вы используете Vercel:</p>
+                                                <ol className="list-decimal pl-4 space-y-1">
+                                                    <li>Зайдите в настройки проекта на Vercel.</li>
+                                                    <li>Откройте вкладку <b>Environment Variables</b>.</li>
+                                                    <li>Добавьте ключ: <b>API_KEY</b> = <code>ваш_ключ</code>.</li>
+                                                    <li>Сделайте <b>Redeploy</b> (пересоберите проект).</li>
+                                                </ol>
+                                            </div>
+                                        )}
+
                                         <button onClick={() => fetchExplanation(selectedQuestion.id, true)} className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg shadow-sm text-sm font-medium hover:bg-red-50 transition-colors">
                                             Попробовать снова
                                         </button>
@@ -244,6 +326,12 @@ const App: React.FC = () => {
                                     </>
                                 )}
                              </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'quiz' && (
+                        <div className="h-full animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
+                            <QuizInterface question={selectedQuestion} />
                         </div>
                     )}
 
@@ -280,7 +368,7 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
                         { icon: BookOpenCheck, label: "81 Билет", sub: "Вся база", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
-                        { icon: MessageSquare, label: "AI Тьютор", sub: "Чат 24/7", color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100" },
+                        { icon: GraduationCap, label: "Тесты", sub: "Проверка", color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-100" },
                         { icon: Youtube, label: "Видео", sub: "Подборки", color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-100" },
                         { icon: BrainCircuit, label: "Понятно", sub: "Без воды", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-100" }
                     ].map((item, i) => (

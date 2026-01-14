@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateAudioExplanation } from '../services/geminiService';
 import { Question } from '../types';
-import { Play, Pause, Square, Loader2, Volume2, AlertCircle, Headphones } from 'lucide-react';
+import { Play, Pause, Square, Loader2, Volume2, AlertCircle, Headphones, RotateCw } from 'lucide-react';
 
 interface AudioPlayerProps {
   question: Question;
@@ -78,8 +78,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ question }) => {
   const playAudio = async () => {
     setError(null);
     const ctx = initAudioContext();
+    
+    // Resume context immediately on user click to satisfy mobile autoplay policies
     if (ctx.state === 'suspended') {
-        await ctx.resume();
+        try {
+            await ctx.resume();
+        } catch (e) {
+            console.error("Audio Context Resume failed", e);
+        }
     }
 
     if (audioBufferRef.current) {
@@ -90,12 +96,17 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ question }) => {
     setLoading(true);
     try {
       const base64Data = await generateAudioExplanation(question);
+      if (!base64Data) throw new Error("Empty audio data");
       const buffer = processAudioData(base64Data);
       audioBufferRef.current = buffer;
       startPlayback(buffer);
     } catch (err: any) {
       console.error(err);
-      setError("Не удалось.");
+      if (err.message.includes("API Key") || err.message.includes("403")) {
+        setError("Нужен API ключ");
+      } else {
+        setError("Ошибка загрузки");
+      }
     } finally {
       setLoading(false);
     }
@@ -141,10 +152,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ question }) => {
         </div>
         <div>
             <h3 className={`font-bold leading-tight ${error ? 'text-red-900' : 'text-white'}`}>
-                {error ? "Ошибка аудио" : "Аудио-разбор"}
+                {error ? "Ошибка" : "Аудио-разбор"}
             </h3>
             <p className={`text-sm mt-0.5 ${error ? 'text-red-700' : 'text-slate-300'}`}>
-                {loading ? "Подготовка..." : isPlaying ? "Воспроизведение..." : error ? "Попробуйте позже" : "Слушать краткую суть"}
+                {loading ? "Генерация..." : isPlaying ? "Воспроизведение..." : error || "Слушать краткую суть"}
             </p>
         </div>
       </div>
@@ -164,14 +175,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ question }) => {
         ) : (
             <button 
                 onClick={playAudio}
-                disabled={!!error}
                 className={`w-12 h-12 flex items-center justify-center rounded-full transition-all shadow-lg ${
                     error 
-                    ? 'bg-red-200 text-red-500 cursor-not-allowed' 
+                    ? 'bg-red-200 text-red-500 hover:bg-red-300' 
                     : 'bg-indigo-500 hover:bg-indigo-400 text-white hover:scale-105 active:scale-95 shadow-indigo-900/30'
                 }`}
+                title={error ? "Попробуйте обновить страницу или проверить ключ" : "Воспроизвести"}
             >
-                <Play className="w-5 h-5 fill-current ml-0.5" />
+                {error ? <RotateCw className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
             </button>
         )}
       </div>

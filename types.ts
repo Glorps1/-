@@ -1,3 +1,4 @@
+
 export enum Category {
   OSCILLATIONS = "Колебания и цепи",
   WAVES_OPTICS = "Волны и оптика",
@@ -28,4 +29,11 @@ export interface VideoRecommendation {
   query: string;
   description: string;
   type: 'lecture' | 'problem_solving' | 'experiment';
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number; // 0-based index
+  explanation: string;
 }
